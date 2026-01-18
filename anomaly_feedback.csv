@@ -1,3 +1,1 @@
-cycle_index,is_true_anomaly,timestamp,notes
-6,True,2026-01-18T14:56:32.637318,
-41,True,2026-01-18T14:57:06.203835,
+event_id,cycle_index,is_true_anomaly,fault_type,timestamp,reviewer,notes
