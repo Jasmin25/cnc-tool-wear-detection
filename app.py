@@ -1,41 +1,37 @@
 """
 CNC Tool Wear Anomaly Detection System
-Streamlit Web Application
+Unified demo-first Streamlit Application.
 
 This application provides:
-1. Visualization of sensor data over machining cycles
-2. Anomaly detection using Isolation Forest
-3. Interactive feedback collection for detected anomalies
+1. Live monitoring simulation with anomaly alerts
+2. Simplified analysis dashboard
+3. Human-in-the-loop anomaly review
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import os
-import json
-from datetime import datetime
-from typing import Optional
-
-# Add src to path for imports
 import sys
+import time
+from datetime import datetime
+from typing import Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.data_processing import (
+    AE_FEATURES,
+    CF_FEATURES,
+    SENSOR_FEATURES,
+    VIB_FEATURES,
     load_data,
     validate_data,
-    SENSOR_FEATURES,
-    CF_FEATURES,
-    VIB_FEATURES,
-    AE_FEATURES,
 )
-from src.model import ToolWearAnomalyDetector, create_and_train_detector
+from src.model import ToolWearAnomalyDetector
 
 
-# Page configuration
 st.set_page_config(
     page_title="CNC Tool Wear Detection",
     page_icon="🔧",
@@ -43,18 +39,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Feedback file path
 FEEDBACK_FILE = "anomaly_feedback.csv"
-
-
-# ============================================================================
-# Caching Functions
-# ============================================================================
 
 
 @st.cache_data
 def load_and_validate_data():
-    """Load and validate the dataset."""
     df = load_data()
     validation = validate_data(df)
     return df, validation
@@ -62,23 +51,14 @@ def load_and_validate_data():
 
 @st.cache_resource
 def train_model(_df: pd.DataFrame, contamination: float = 0.05):
-    """Train the anomaly detection model."""
     detector = ToolWearAnomalyDetector(contamination=contamination)
     detector.train(_df)
     return detector
 
 
-# ============================================================================
-# Visualization Functions
-# ============================================================================
-
-
 def create_wear_progression_chart(df: pd.DataFrame) -> go.Figure:
-    """Create a time-series chart of wear progression with anomaly highlighting."""
-
     fig = go.Figure()
 
-    # Normal points
     normal_df = df[~df["is_anomaly"]]
     fig.add_trace(
         go.Scatter(
@@ -91,7 +71,6 @@ def create_wear_progression_chart(df: pd.DataFrame) -> go.Figure:
         )
     )
 
-    # Anomaly points
     anomaly_df = df[df["is_anomaly"]]
     fig.add_trace(
         go.Scatter(
@@ -117,11 +96,8 @@ def create_wear_progression_chart(df: pd.DataFrame) -> go.Figure:
 
 
 def create_anomaly_score_chart(df: pd.DataFrame) -> go.Figure:
-    """Create a chart showing anomaly scores over cycles."""
-
     fig = go.Figure()
 
-    # Color by wear class
     color_map = {"Healthy": "#2ecc71", "Moderate": "#f39c12", "Worn": "#e74c3c"}
 
     for wear_class in ["Healthy", "Moderate", "Worn"]:
@@ -137,7 +113,6 @@ def create_anomaly_score_chart(df: pd.DataFrame) -> go.Figure:
             )
         )
 
-    # Add threshold line
     fig.add_hline(
         y=0,
         line_dash="dash",
@@ -151,18 +126,15 @@ def create_anomaly_score_chart(df: pd.DataFrame) -> go.Figure:
         xaxis_title="Cycle Index",
         yaxis_title="Anomaly Score (lower = more anomalous)",
         legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99),
-        height=400,
+        height=350,
     )
 
     return fig
 
 
 def create_sensor_feature_chart(df: pd.DataFrame, feature: str) -> go.Figure:
-    """Create a time-series chart for a specific sensor feature."""
-
     fig = go.Figure()
 
-    # Normal points
     normal_df = df[~df["is_anomaly"]]
     fig.add_trace(
         go.Scatter(
@@ -174,7 +146,6 @@ def create_sensor_feature_chart(df: pd.DataFrame, feature: str) -> go.Figure:
         )
     )
 
-    # Anomaly points
     anomaly_df = df[df["is_anomaly"]]
     fig.add_trace(
         go.Scatter(
@@ -190,40 +161,13 @@ def create_sensor_feature_chart(df: pd.DataFrame, feature: str) -> go.Figure:
         title=f"{feature} Over Machining Cycles",
         xaxis_title="Cycle Index",
         yaxis_title=feature,
-        height=350,
+        height=300,
     )
 
     return fig
-
-
-def create_class_distribution_chart(df: pd.DataFrame) -> go.Figure:
-    """Create a pie chart of wear class distribution."""
-
-    counts = df["Wear_Class"].value_counts()
-
-    fig = go.Figure(
-        data=[
-            go.Pie(
-                labels=counts.index,
-                values=counts.values,
-                marker_colors=["#2ecc71", "#f39c12", "#e74c3c"],
-                hole=0.4,
-            )
-        ]
-    )
-
-    fig.update_layout(title="Wear Class Distribution", height=300)
-
-    return fig
-
-
-# ============================================================================
-# Feedback Management Functions
-# ============================================================================
 
 
 def load_feedback() -> pd.DataFrame:
-    """Load existing feedback from file."""
     if os.path.exists(FEEDBACK_FILE):
         return pd.read_csv(FEEDBACK_FILE)
     return pd.DataFrame(
@@ -232,18 +176,13 @@ def load_feedback() -> pd.DataFrame:
 
 
 def save_feedback(feedback_df: pd.DataFrame):
-    """Save feedback to file."""
     feedback_df.to_csv(FEEDBACK_FILE, index=False)
 
 
 def add_feedback(cycle_index: int, is_true_anomaly: bool, notes: str = ""):
-    """Add new feedback entry."""
     feedback_df = load_feedback()
-
-    # Remove existing feedback for this cycle if any
     feedback_df = feedback_df[feedback_df["cycle_index"] != cycle_index]
 
-    # Add new entry
     new_entry = pd.DataFrame(
         [
             {
@@ -260,22 +199,161 @@ def add_feedback(cycle_index: int, is_true_anomaly: bool, notes: str = ""):
     return feedback_df
 
 
-# ============================================================================
-# Main Application
-# ============================================================================
+def build_demo_feedback(anomalies: pd.DataFrame) -> pd.DataFrame:
+    demo_rows = []
+    for idx, (_, row) in enumerate(anomalies.head(3).iterrows(), start=1):
+        demo_rows.append(
+            {
+                "cycle_index": int(row["cycle_index"]),
+                "is_true_anomaly": idx % 2 == 1,
+                "timestamp": datetime.now().isoformat(),
+                "notes": "Demo feedback entry",
+            }
+        )
+    return pd.DataFrame(demo_rows)
+
+
+def compute_top_feature(df: pd.DataFrame, scaler) -> pd.DataFrame:
+    scaled = scaler.transform(df[SENSOR_FEATURES].values)
+    top_feature_idx = np.argmax(np.abs(scaled), axis=1)
+    top_feature_scores = scaled[np.arange(len(df)), top_feature_idx]
+    df = df.copy()
+    df["top_feature"] = [SENSOR_FEATURES[i] for i in top_feature_idx]
+    df["top_feature_score"] = top_feature_scores
+    return df
+
+
+def initialize_session_state():
+    defaults = {
+        "stream_index": 0,
+        "simulation_active": False,
+        "autoplay": False,
+        "demo_feedback_enabled": True,
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+def render_simulation_panel(result_df: pd.DataFrame, demo_anomalies: pd.DataFrame):
+    st.subheader("🛰️ Live Monitoring Demo")
+    st.caption("Alert → Triage → Outcome")
+
+    col1, col2, col3 = st.columns([2, 2, 3])
+    with col1:
+        st.metric("Current Cycle", st.session_state.stream_index)
+    with col2:
+        status = (
+            "Anomaly" if st.session_state.stream_index in demo_anomalies else "Normal"
+        )
+        st.metric("Current Status", status)
+
+    with col3:
+        col_start, col_next, col_reset = st.columns(3)
+        if col_start.button("▶ Start", use_container_width=True):
+            st.session_state.simulation_active = True
+        if col_next.button("Next Cycle", use_container_width=True):
+            st.session_state.stream_index = min(
+                st.session_state.stream_index + 1, len(result_df) - 1
+            )
+        if col_reset.button("↺ Reset", use_container_width=True):
+            st.session_state.stream_index = 0
+            st.session_state.simulation_active = False
+
+    if st.session_state.simulation_active and st.session_state.autoplay:
+        time.sleep(0.4)
+        st.session_state.stream_index = min(
+            st.session_state.stream_index + 1, len(result_df) - 1
+        )
+        st.rerun()
+
+
+def render_anomaly_review(
+    anomalies_df: pd.DataFrame,
+    feedback_df: pd.DataFrame,
+    highlighted_cycles: List[int],
+):
+    st.subheader("✅ Anomaly Review")
+    st.caption("Triage anomalies and confirm outcomes.")
+
+    if anomalies_df.empty:
+        st.success("No anomalies detected with current settings.")
+        return
+
+    highlight_set = set(highlighted_cycles)
+    for _, row in anomalies_df.iterrows():
+        cycle = int(row["cycle_index"])
+        wear_class = row["Wear_Class"]
+        vb_mm = row["VB_mm"]
+        score = row["anomaly_score"]
+        top_feature = row.get("top_feature", "N/A")
+        top_score = row.get("top_feature_score", 0.0)
+
+        is_highlight = "⭐" if cycle in highlight_set else ""
+        feedback_status = ""
+        if cycle in feedback_df["cycle_index"].values:
+            fb = feedback_df[feedback_df["cycle_index"] == cycle].iloc[0]
+            feedback_status = (
+                "✅ True Anomaly" if fb["is_true_anomaly"] else "❌ False Alarm"
+            )
+
+        with st.expander(
+            f"{is_highlight} Cycle {cycle} | Wear: {wear_class} | VB: {vb_mm:.4f}mm | Score: {score:.4f} {feedback_status}",
+            expanded=cycle in highlight_set,
+        ):
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                st.markdown("**Why flagged:**")
+                st.write(f"{top_feature} ({top_score:.2f} σ)")
+
+                st.markdown("**Sensor Snapshot:**")
+                sensor_data = {
+                    "Feature": ["CF_Feature_1", "Vib_Feature_1", "AE_Feature_1"],
+                    "Value": [
+                        f"{row['CF_Feature_1']:.4f}",
+                        f"{row['Vib_Feature_1']:.4f}",
+                        f"{row['AE_Feature_1']:.4f}",
+                    ],
+                }
+                st.dataframe(pd.DataFrame(sensor_data), hide_index=True)
+
+            with col2:
+                st.markdown("**Outcome:**")
+
+                feedback_key = f"feedback_{cycle}"
+                is_true_anomaly = st.radio(
+                    "Is this a true anomaly?",
+                    options=["Select...", "Yes - True Anomaly", "No - False Alarm"],
+                    key=feedback_key,
+                    horizontal=True,
+                )
+
+                notes = st.text_input("Notes (optional)", key=f"notes_{cycle}")
+
+                if st.button("Save Feedback", key=f"save_{cycle}"):
+                    if is_true_anomaly == "Select...":
+                        st.warning("Please select an option")
+                    else:
+                        is_true = is_true_anomaly == "Yes - True Anomaly"
+                        add_feedback(cycle, is_true, notes)
+                        st.success("Feedback saved!")
+                        st.rerun()
 
 
 def main():
-    # Header
     st.title("🔧 CNC Tool Wear Anomaly Detection")
-    st.markdown("""
-    This system uses machine learning to detect anomalous tool wear patterns in CNC machining operations.
-    Review the detected anomalies and provide feedback to help improve the model.
-    """)
+    st.markdown(
+        """
+        A demo-first experience that blends live monitoring with lightweight analysis.
+        Use the simulation to show real-time alerts, then review anomalies with context.
+        """
+    )
 
-    # Sidebar configuration
-    st.sidebar.header("⚙️ Configuration")
+    initialize_session_state()
 
+    st.sidebar.header("⚙️ Demo Configuration")
+    demo_mode = st.sidebar.toggle("Demo Mode", value=True)
     contamination = st.sidebar.slider(
         "Anomaly Sensitivity",
         min_value=0.01,
@@ -285,7 +363,12 @@ def main():
         help="Expected proportion of anomalies. Higher = more anomalies flagged.",
     )
 
-    # Load data
+    st.sidebar.subheader("Simulation Controls")
+    st.session_state.autoplay = st.sidebar.toggle("Auto-play", value=False)
+    st.session_state.demo_feedback_enabled = st.sidebar.toggle(
+        "Show demo feedback", value=True
+    )
+
     with st.spinner("Loading data..."):
         df, validation = load_and_validate_data()
 
@@ -295,224 +378,88 @@ def main():
         )
         return
 
-    # Train model
     with st.spinner("Training anomaly detection model..."):
         detector = train_model(df, contamination=contamination)
         result_df = detector.predict(df)
-        summary = detector.get_anomaly_summary(result_df)
+        result_df = compute_top_feature(result_df, detector.scaler)
 
-    # Display summary metrics
+    summary = detector.get_anomaly_summary(result_df)
+
     st.header("📊 Overview")
-
-    col1, col2, col3, col4 = st.columns(4)
-
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Total Cycles", summary["total_samples"])
-
     with col2:
         st.metric("Anomalies Detected", summary["anomalies_detected"])
-
     with col3:
         st.metric("Anomaly Rate", f"{summary['anomaly_rate'] * 100:.1f}%")
 
-    with col4:
-        healthy_rate = summary["by_wear_class"]["Healthy"]["rate"] * 100
-        st.metric(
-            "False Alarm Rate",
-            f"{healthy_rate:.1f}%",
-            help="% of Healthy cycles flagged as anomalies",
-        )
-
-    # Main visualization
-    st.header("📈 Wear Progression & Anomaly Detection")
-
-    tab1, tab2, tab3 = st.tabs(
-        ["Wear Progression", "Anomaly Scores", "Sensor Features"]
+    anomalies_df = detector.get_flagged_cycles(result_df).sort_values(
+        "anomaly_score"
     )
+    demo_highlights = anomalies_df.head(5)["cycle_index"].astype(int).tolist()
 
-    with tab1:
-        fig = create_wear_progression_chart(result_df)
-        st.plotly_chart(fig, width="stretch")
+    if demo_mode:
+        render_simulation_panel(result_df, set(demo_highlights))
 
-        st.markdown("""
-        **Chart Interpretation:**
-        - 🟢 **Green points**: Normal machining cycles
-        - ❌ **Red X markers**: Detected anomalies
-        - The Y-axis shows flank wear (VB_mm) - higher values indicate more worn tools
-        """)
+    st.header("📈 Tool Wear Overview")
+    st.plotly_chart(create_wear_progression_chart(result_df), width="stretch")
 
-    with tab2:
-        fig = create_anomaly_score_chart(result_df)
-        st.plotly_chart(fig, width="stretch")
+    feedback_df = load_feedback()
+    if demo_mode and st.session_state.demo_feedback_enabled and feedback_df.empty:
+        feedback_df = build_demo_feedback(anomalies_df)
 
-        st.markdown("""
-        **Anomaly Score Interpretation:**
-        - Points below the red dashed line (score < 0) are flagged as anomalies
-        - Lower scores indicate more unusual sensor patterns
-        - Colors show the actual wear class for validation
-        """)
+    render_anomaly_review(anomalies_df.head(8), feedback_df, demo_highlights)
 
-    with tab3:
-        # Feature selector
-        feature_groups = {
-            "Cutting Force": CF_FEATURES,
-            "Vibration": VIB_FEATURES,
-            "Acoustic Emission": AE_FEATURES,
-        }
+    if not feedback_df.empty:
+        st.markdown("---")
+        st.subheader("📋 Feedback Summary")
+        total_fb = len(feedback_df)
+        true_anomalies = feedback_df["is_true_anomaly"].sum()
+        false_alarms = total_fb - true_anomalies
 
-        col1, col2 = st.columns([1, 3])
+        col1, col2, col3 = st.columns(3)
         with col1:
-            group = st.selectbox("Feature Group", list(feature_groups.keys()))
-            feature = st.selectbox("Feature", feature_groups[group])
-
+            st.metric("Total Feedback", total_fb)
         with col2:
-            fig = create_sensor_feature_chart(result_df, feature)
-            st.plotly_chart(fig, width="stretch")
+            st.metric("True Anomalies", int(true_anomalies))
+        with col3:
+            st.metric("False Alarms", int(false_alarms))
 
-    # Detection results by class
-    st.header("🎯 Detection Results by Wear Class")
+        if st.checkbox("Show all feedback"):
+            st.dataframe(feedback_df, width="stretch")
 
-    col1, col2 = st.columns([1, 2])
-
-    with col1:
-        fig = create_class_distribution_chart(result_df)
-        st.plotly_chart(fig, width="stretch")
-
-    with col2:
-        st.markdown("### Detection Performance")
-
-        for wear_class, data in summary["by_wear_class"].items():
-            color = {"Healthy": "🟢", "Moderate": "🟡", "Worn": "🔴"}[wear_class]
-            st.markdown(f"""
-            **{color} {wear_class}**: {data["anomalies"]} / {data["total"]} flagged ({data["rate"] * 100:.1f}%)
-            """)
-
-        st.info("""
-        **Interpretation:**
-        - Low Healthy detection rate = fewer false alarms ✓
-        - High Worn detection rate = better at catching real issues ✓
-        - Moderate cases may go either way (borderline wear)
-        """)
-
-    # Anomaly feedback section
-    st.header("✅ Anomaly Review & Feedback")
-    st.markdown("""
-    Review the detected anomalies below. Mark whether each detection is a **true anomaly** 
-    (real tool wear issue) or a **false alarm** to help improve future detection.
-    """)
-
-    # Get flagged anomalies
-    anomalies_df = detector.get_flagged_cycles(result_df)
-
-    if len(anomalies_df) == 0:
-        st.success("No anomalies detected with current settings!")
-    else:
-        # Load existing feedback
-        existing_feedback = load_feedback()
-
-        # Display anomalies in expandable sections
+    with st.expander("🔬 Advanced Analysis"):
         st.markdown(
-            f"**{len(anomalies_df)} anomalies detected** - expand each to review and provide feedback:"
+            "Explore detailed anomaly scores and sensor signals when you have time to dive deeper."
         )
 
-        # Pagination for large number of anomalies
-        items_per_page = 10
-        total_pages = (len(anomalies_df) - 1) // items_per_page + 1
+        tab1, tab2 = st.tabs(["Anomaly Scores", "Sensor Features"])
+        with tab1:
+            st.plotly_chart(create_anomaly_score_chart(result_df), width="stretch")
 
-        if total_pages > 1:
-            page = st.selectbox(
-                "Page",
-                range(1, total_pages + 1),
-                format_func=lambda x: f"Page {x} of {total_pages}",
-            )
-        else:
-            page = 1
+        with tab2:
+            feature_groups: Dict[str, List[str]] = {
+                "Cutting Force": CF_FEATURES,
+                "Vibration": VIB_FEATURES,
+                "Acoustic Emission": AE_FEATURES,
+            }
 
-        start_idx = (page - 1) * items_per_page
-        end_idx = min(start_idx + items_per_page, len(anomalies_df))
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                group = st.selectbox("Feature Group", list(feature_groups.keys()))
+                feature = st.selectbox("Feature", feature_groups[group])
 
-        page_anomalies = anomalies_df.iloc[start_idx:end_idx]
-
-        for idx, row in page_anomalies.iterrows():
-            cycle = int(row["cycle_index"])
-            wear_class = row["Wear_Class"]
-            vb_mm = row["VB_mm"]
-            score = row["anomaly_score"]
-
-            # Check if already has feedback
-            has_feedback = cycle in existing_feedback["cycle_index"].values
-            feedback_status = ""
-            if has_feedback:
-                fb = existing_feedback[existing_feedback["cycle_index"] == cycle].iloc[
-                    0
-                ]
-                feedback_status = (
-                    "✅ True Anomaly" if fb["is_true_anomaly"] else "❌ False Alarm"
+            with col2:
+                st.plotly_chart(
+                    create_sensor_feature_chart(result_df, feature), width="stretch"
                 )
 
-            with st.expander(
-                f"Cycle {cycle} | Wear: {wear_class} | VB: {vb_mm:.4f}mm | Score: {score:.4f} {feedback_status}"
-            ):
-                col1, col2 = st.columns([2, 1])
-
-                with col1:
-                    st.markdown("**Sensor Readings:**")
-                    # Show key sensor values
-                    sensor_data = {"Feature": [], "Value": []}
-                    for feat in ["CF_Feature_1", "Vib_Feature_1", "AE_Feature_1"]:
-                        sensor_data["Feature"].append(feat)
-                        sensor_data["Value"].append(f"{row[feat]:.4f}")
-
-                    st.dataframe(pd.DataFrame(sensor_data), hide_index=True)
-
-                with col2:
-                    st.markdown("**Your Feedback:**")
-
-                    feedback_key = f"feedback_{cycle}"
-                    is_true_anomaly = st.radio(
-                        "Is this a true anomaly?",
-                        options=["Select...", "Yes - True Anomaly", "No - False Alarm"],
-                        key=feedback_key,
-                        horizontal=True,
-                    )
-
-                    notes = st.text_input("Notes (optional)", key=f"notes_{cycle}")
-
-                    if st.button("Save Feedback", key=f"save_{cycle}"):
-                        if is_true_anomaly == "Select...":
-                            st.warning("Please select an option")
-                        else:
-                            is_true = is_true_anomaly == "Yes - True Anomaly"
-                            add_feedback(cycle, is_true, notes)
-                            st.success("Feedback saved!")
-                            st.rerun()
-
-        # Feedback summary
-        if len(existing_feedback) > 0:
-            st.markdown("---")
-            st.subheader("📋 Feedback Summary")
-
-            total_fb = len(existing_feedback)
-            true_anomalies = existing_feedback["is_true_anomaly"].sum()
-            false_alarms = total_fb - true_anomalies
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Feedback", total_fb)
-            with col2:
-                st.metric("True Anomalies", int(true_anomalies))
-            with col3:
-                st.metric("False Alarms", int(false_alarms))
-
-            if st.checkbox("Show all feedback"):
-                st.dataframe(existing_feedback, width="stretch")
-
-    # Footer
     st.markdown("---")
     st.markdown(
         """
     <div style='text-align: center; color: gray;'>
-        CNC Tool Wear Anomaly Detection System | Built with Streamlit & Scikit-learn
+        CNC Tool Wear Anomaly Detection System | Demo-first Streamlit Experience
     </div>
     """,
         unsafe_allow_html=True,
