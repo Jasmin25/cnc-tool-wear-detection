@@ -68,7 +68,9 @@ docker run -p 8501:8501 cnc-tool-wear-detection
 
 ```
 cnc-tool-wear-detection/
-├── app.py                  # Main Streamlit application
+├── app.py                  # Demo-first Streamlit application
+├── v2/
+│   └── app.py              # Original analytics-heavy app
 ├── src/
 │   ├── __init__.py
 │   ├── data_processing.py  # Data loading and preprocessing
